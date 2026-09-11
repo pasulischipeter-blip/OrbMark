@@ -1,3 +1,5 @@
+const BUILD_VERSION = "1.3.4";
+const BUILD_STORAGE_KEY = "orbmark_build_version";
 const STORAGE_KEY = "beenthere_places_v3";
 const TOTAL_WORLD_COUNTRIES = 195;
 const LAST_EXTERNAL_BACKUP_KEY = "orbmark_last_external_backup";
@@ -2753,9 +2755,56 @@ document.getElementById("resetBtn").addEventListener("click",()=>{
   if(confirm("Vuoi davvero cancellare tutti i dati?")){places=[];savePlaces()}
 });
 
-initWorldMap();
-refreshUI();
-setTimeout(maybeShowWeeklyBackupReminder,700);
+
+async function forceOrbmarkUpdateIfNeeded(){
+  try{
+    const response=await fetch(`version.json?t=${Date.now()}`,{
+      cache:"no-store",
+      headers:{"Cache-Control":"no-cache"}
+    });
+
+    if(!response.ok) return;
+
+    const remote=await response.json();
+    const remoteVersion=String(remote.version || "").trim();
+    const currentVersion=String(BUILD_VERSION).trim();
+
+    if(!remoteVersion || remoteVersion===currentVersion){
+      localStorage.setItem(BUILD_STORAGE_KEY,currentVersion);
+      return;
+    }
+
+    // Una nuova release è disponibile:
+    // puliamo cache e Service Worker prima di ricaricare.
+    if("caches" in window){
+      const keys=await caches.keys();
+      await Promise.all(keys.map(key=>caches.delete(key)));
+    }
+
+    if("serviceWorker" in navigator){
+      const regs=await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r=>r.unregister()));
+    }
+
+    localStorage.setItem(BUILD_STORAGE_KEY,remoteVersion);
+
+    const url=new URL(window.location.href);
+    url.searchParams.set("v",remoteVersion);
+    url.searchParams.set("_refresh",Date.now().toString());
+
+    window.location.replace(url.toString());
+  }catch(err){
+    console.warn("Controllo aggiornamento Orbmark non riuscito:",err);
+  }
+}
+
+(async()=>{
+  await forceOrbmarkUpdateIfNeeded();
+  initWorldMap();
+  refreshUI();
+  setTimeout(maybeShowWeeklyBackupReminder,700);
+})();
+
 
 if("serviceWorker" in navigator){
   window.addEventListener("load",async()=>{

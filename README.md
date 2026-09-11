@@ -4,20 +4,25 @@
 
 ## Versione
 
-**V1.3.3**
+**V1.3.4**
 
-## Correzioni
+## Aggiornamento automatico
 
-- ricerca di città in aree senza sotto-zone corretta
-- esempio: cercando **Dubai** non si apre più una pagina dettaglio vuota
-- viene mostrata direttamente la card della regione/stato
-- nelle aree senza ADM2 compare **Aggiungi città / luogo**
-- il nome cercato viene precompilato automaticamente (es. Dubai)
-- i luoghi possono essere salvati direttamente sotto una regione/stato ADM1
+Da questa versione Orbmark controlla `version.json` a ogni avvio/refresh.
+
+Se trova una versione più recente:
+- svuota le Cache API
+- disinstalla eventuali Service Worker vecchi
+- ricarica l'URL con un parametro anti-cache
+- forza così il caricamento dei file più recenti
+
+### Importante
+La prima installazione di questa V1.3.4 va caricata/aggiornata normalmente.
+Da quel momento in poi le versioni successive potranno essere rilevate e forzate automaticamente.
 
 ## Dati
 
-I dati vengono salvati localmente nel browser/dispositivo.
+I dati visitati restano in `localStorage` e non vengono cancellati dal meccanismo di update.
 
 ## Copyright
 

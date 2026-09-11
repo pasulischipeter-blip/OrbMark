@@ -59,6 +59,10 @@ let selectedRegion = null;
 let selectedArea = null;
 let currentLevel = "ADM1";
 let countryOnlyPending = null;
+let regionActionPending = null;
+let worldSearchTimer = null;
+let worldSearchAbort = null;
+const worldSearchCache = new Map();
 let areaConfirmPending = null;
 let mobileSelectedLayer = null;
 let mobileSelectedKey = "";
@@ -180,6 +184,19 @@ function getCountryIso3(feature) {
   );
 
   return found || COUNTRY_ALIASES[countryName] || "";
+}
+
+
+function getCountryIso2(feature) {
+  const p=feature?.properties || {};
+  const candidates=[
+    p["ISO3166-1-Alpha-2"],
+    p.ISO_A2_EH,
+    p.ISO_A2,
+    p.iso_a2
+  ];
+  const found=candidates.find(v=>typeof v==="string" && /^[A-Z]{2}$/.test(v) && v!=="-99");
+  return found || "";
 }
 
 function getAreaName(feature, level=currentLevel) {
@@ -1316,7 +1333,7 @@ function renderAdmin1Map(){
 
         const b=layer.getBounds?.();
         if(b?.isValid()) countryMap.fitBounds(b,{padding:[20,20],maxZoom:7});
-        setTimeout(()=>openRegion(region),180);
+        setTimeout(()=>openRegionAction(region),120);
       });
     }
   }).addTo(countryMap);
@@ -1406,11 +1423,11 @@ function unmarkAreaVisited(area){
   savePlaces();
 }
 
-function renderAdmin2ForRegion(region){
-  clearMobileMapSelection();
-  const regionFeature=region.feature;
 
-  const filtered=currentAdmin2.geojson.features.filter(feature=>{
+function getAdmin2FeaturesForRegion(region, admin2=currentAdmin2){
+  if(!region?.feature || !admin2?.geojson?.features) return [];
+
+  return admin2.geojson.features.filter(feature=>{
     const p=feature.properties || {};
 
     if(currentCountry.iso3==="ITA"){
@@ -1424,11 +1441,126 @@ function renderAdmin2ForRegion(region){
 
     try{
       const pt=turf.pointOnFeature(feature);
-      return turf.booleanPointInPolygon(pt,regionFeature);
+      return turf.booleanPointInPolygon(pt,region.feature);
     }catch{
       return false;
     }
   });
+}
+
+async function ensureAdmin2ForRegion(region){
+  if(currentCountry.iso3==="FRA"){
+    return await fetchFranceDepartmentsForRegion(region);
+  }
+
+  if(currentAdmin2?.geojson?.features){
+    return currentAdmin2;
+  }
+
+  return await fetchBoundary(currentCountry.iso3,"ADM2");
+}
+
+function openRegionAction(region){
+  regionActionPending=region;
+  document.getElementById("regionActionName").textContent=region.name;
+  document.getElementById("regionActionCountry").textContent=currentCountry?.name || "";
+  document.getElementById("regionActionDialog").showModal();
+}
+
+async function markWholeRegionVisited(region){
+  if(!currentCountry || !region) return;
+
+  const button=document.getElementById("markWholeRegionBtn");
+  const oldText=button?.textContent || "";
+  if(button){
+    button.disabled=true;
+    button.textContent="Caricamento…";
+  }
+
+  try{
+    const admin2=await ensureAdmin2ForRegion(region);
+    const previousAdmin2=currentAdmin2;
+
+    // Per la Francia il dataset caricato qui è già limitato alla regione.
+    const children=currentCountry.iso3==="FRA"
+      ? admin2.geojson.features
+      : getAdmin2FeaturesForRegion(region, admin2);
+
+    if(!children.length){
+      alert("Non ho trovato sotto-aree selezionabili per questa regione.");
+      return;
+    }
+
+    let added=0;
+    for(const feature of children){
+      const area={
+        name:getAreaName(feature,"ADM2"),
+        id:getAreaId(feature,"ADM2"),
+        feature
+      };
+
+      const exists=places.some(p =>
+        p.countryIso3===currentCountry.iso3 &&
+        (
+          (p.areaId && String(p.areaId)===String(area.id)) ||
+          normalize(p.areaName)===normalize(area.name)
+        )
+      );
+
+      if(!exists){
+        places.push({
+          id:makeId(),
+          countryName:currentCountry.name,
+          countryIso3:currentCountry.iso3,
+          adminLevel:"ADM2",
+          areaName:area.name,
+          areaId:String(area.id),
+          parentAreaName:region.name,
+          parentAreaId:String(region.id),
+          countryOnly:false,
+          areaOnly:true,
+          city:"",
+          name:"",
+          date:new Date().toISOString().slice(0,10),
+          notes:"",
+          createdAt:new Date().toISOString()
+        });
+        added++;
+      }
+    }
+
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(places));
+    refreshUI();
+
+    if(countryLayer && currentLevel==="ADM1"){
+      countryLayer.setStyle(styleAdmin1Feature);
+    }
+
+    alert(
+      added
+        ? `${region.name}: aggiunte ${added} sotto-aree ai luoghi visitati.`
+        : `${region.name} era già completamente selezionata.`
+    );
+
+    if(currentCountry.iso3!=="FRA"){
+      currentAdmin2=previousAdmin2 || admin2;
+    }
+  }catch(err){
+    console.error("Errore selezione intera regione:",err);
+    alert("Non riesco a selezionare tutta questa area in questo momento.");
+  }finally{
+    if(button){
+      button.disabled=false;
+      button.textContent=oldText;
+    }
+  }
+}
+
+function renderAdmin2ForRegion(region){
+  clearMobileMapSelection();
+  const regionFeature=region.feature;
+
+  const filtered=getAdmin2FeaturesForRegion(region,currentAdmin2);
 
   if(countryMap){countryMap.remove();countryMap=null;countryLayer=null;}
   document.getElementById("countryMap").innerHTML="";
@@ -1527,51 +1659,335 @@ function openCountryOnly(country) {
   document.getElementById("countryOnlyDialog").showModal();
 }
 
-/* Ricerca Paese tipo autocomplete */
+/* Ricerca unificata: Paese, regione o città */
 function openCountrySearch() {
   const input=document.getElementById("countrySearchInput");
   input.value="";
-  renderCountrySuggestions("");
+  renderWorldSearchSuggestions("");
   document.getElementById("countryDialog").showModal();
   setTimeout(()=>input.focus(),120);
 }
 
-function renderCountrySuggestions(query) {
+function countryByIso2(iso2=""){
+  const code=iso2.toUpperCase();
+  if(!code) return null;
+
+  // 1) Se il GeoJSON espone direttamente ISO2, usa quello.
+  const direct=countries.find(c=>getCountryIso2(c.feature)===code);
+  if(direct) return direct;
+
+  // 2) Fallback robusto: il browser converte ISO2 -> nome inglese della nazione.
+  //    Esempio FR -> France, IT -> Italy, DE -> Germany.
+  try{
+    const displayName=new Intl.DisplayNames(["en"],{type:"region"}).of(code);
+    const normalizedName=normalize(displayName || "");
+
+    if(normalizedName){
+      const byName=countries.find(c=>normalize(c.name)===normalizedName);
+      if(byName) return byName;
+
+      const aliasIso3=COUNTRY_ALIASES[normalizedName];
+      if(aliasIso3){
+        const byAlias=countries.find(c=>c.iso3===aliasIso3);
+        if(byAlias) return byAlias;
+      }
+
+      // Ultimo fallback per dataset con nomi leggermente più lunghi/corti.
+      const fuzzy=countries.find(c=>{
+        const n=normalize(c.name);
+        return n.includes(normalizedName) || normalizedName.includes(n);
+      });
+      if(fuzzy) return fuzzy;
+    }
+  }catch{}
+
+  return null;
+}
+
+function localCountryMatches(query){
   const q=normalize(query);
+  if(!q) return countries.slice(0,12);
+
+  return countries.filter(c =>
+    normalize(c.name).startsWith(q) ||
+    normalize(c.iso3).startsWith(q)
+  ).slice(0,12);
+}
+
+function classifyNominatimResult(item){
+  const a=item.address || {};
+  const type=normalize(item.addresstype || item.type || "");
+
+  if(["state","region","province","county","administrative"].includes(type)){
+    return "Regione / area";
+  }
+
+  if(
+    ["city","town","village","municipality","hamlet","suburb","borough"].includes(type) ||
+    a.city || a.town || a.village || a.municipality
+  ){
+    return "Città";
+  }
+
+  return "Luogo";
+}
+
+function displaySearchName(item){
+  const a=item.address || {};
+  return (
+    a.city || a.town || a.village || a.municipality ||
+    a.state || a.region || a.province || a.county ||
+    item.name || item.display_name?.split(",")[0] || "Luogo"
+  );
+}
+
+async function fetchWorldSearch(query){
+  const q=query.trim();
+  if(q.length<3) return [];
+
+  const cacheKey=normalize(q);
+  if(worldSearchCache.has(cacheKey)) return worldSearchCache.get(cacheKey);
+
+  if(worldSearchAbort) worldSearchAbort.abort();
+  worldSearchAbort=new AbortController();
+
+  const url=new URL("https://nominatim.openstreetmap.org/search");
+  url.searchParams.set("format","jsonv2");
+  url.searchParams.set("q",q);
+  url.searchParams.set("addressdetails","1");
+  url.searchParams.set("limit","8");
+  url.searchParams.set("accept-language","it");
+
+  try{
+    const resp=await fetch(url,{signal:worldSearchAbort.signal});
+    if(!resp.ok) throw new Error(`Search HTTP ${resp.status}`);
+    const raw=await resp.json();
+
+    const filtered=raw.filter(item=>{
+      const kind=classifyNominatimResult(item);
+      return kind==="Città" || kind==="Regione / area";
+    });
+
+    // Nominatim può restituire più record praticamente identici della stessa città.
+    // Deduplichiamo per nome + regione + Paese.
+    const seen=new Set();
+    const deduped=[];
+
+    for(const item of filtered){
+      const a=item.address || {};
+      const key=[
+        normalize(displaySearchName(item)),
+        normalize(a.state || a.region || a.province || a.county || ""),
+        (a.country_code || "").toUpperCase()
+      ].join("|");
+
+      if(seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(item);
+    }
+
+    worldSearchCache.set(cacheKey,deduped);
+    return deduped;
+  }catch(err){
+    if(err.name==="AbortError") return [];
+    console.warn("Ricerca città/regione non disponibile:",err);
+    return [];
+  }
+}
+
+function renderWorldSearchSuggestions(query) {
   const box=document.getElementById("countrySuggestions");
+  const local=localCountryMatches(query);
 
-  let filtered = !q
-    ? countries.slice(0,20)
-    : countries.filter(c =>
-        normalize(c.name).startsWith(q) ||
-        normalize(c.iso3).startsWith(q)
-      );
-  filtered=filtered.slice(0,40);
-
-  box.innerHTML=filtered.length
-    ? filtered.map(c=>`
-      <button type="button" class="suggestion-btn" data-iso="${escapeHtml(c.iso3)}">
-        ${escapeHtml(c.name)}
-        <small>${SUPPORTED_VISUAL(c.iso3) ? "Dettaglio aree disponibile" : "Paese disponibile; aree non ancora attive"}</small>
+  box.innerHTML=local.length
+    ? local.map(c=>`
+      <button type="button" class="suggestion-btn" data-country-iso="${escapeHtml(c.iso3)}">
+        <span class="search-result-main">${escapeHtml(c.name)}</span>
+        <small>Paese · ${SUPPORTED_VISUAL(c.iso3) ? "dettaglio aree disponibile" : "selezione Paese disponibile"}</small>
       </button>`).join("")
-    : '<div class="empty">Nessun Paese trovato.</div>';
+    : (query.trim().length<3
+      ? '<div class="search-loading">Scrivi almeno 3 caratteri per cercare anche città e regioni.</div>'
+      : '<div class="search-loading">Ricerca città e regioni…</div>');
 
-  box.querySelectorAll("[data-iso]").forEach(btn=>{
+  box.querySelectorAll("[data-country-iso]").forEach(btn=>{
     btn.addEventListener("click",()=>{
-      const c=countries.find(x=>x.iso3===btn.dataset.iso);
+      const c=countries.find(x=>x.iso3===btn.dataset.countryIso);
       if(!c) return;
       document.getElementById("countryDialog").close();
-
-      const targetLayer = findWorldLayerByIso(c.iso3);
-      const bounds=targetLayer?.getBounds?.();
-      if(bounds?.isValid()) worldMap.fitBounds(bounds,{padding:[25,25],maxZoom:5});
-
-      setTimeout(()=>{
-        if(SUPPORTED_VISUAL(c.iso3)) openCountry(c);
-        else openCountryOnly(c);
-      },180);
+      if(SUPPORTED_VISUAL(c.iso3)) openCountry(c);
+      else openCountryOnly(c);
     });
   });
+
+  clearTimeout(worldSearchTimer);
+  if(query.trim().length<3) return;
+
+  worldSearchTimer=setTimeout(async()=>{
+    const remote=await fetchWorldSearch(query);
+    if(document.getElementById("countrySearchInput").value.trim()!==query.trim()) return;
+
+    const currentCountries=local.map(c=>`
+      <button type="button" class="suggestion-btn" data-country-iso="${escapeHtml(c.iso3)}">
+        <span class="search-result-main">${escapeHtml(c.name)}</span>
+        <small>Paese · ${SUPPORTED_VISUAL(c.iso3) ? "dettaglio aree disponibile" : "selezione Paese disponibile"}</small>
+      </button>`).join("");
+
+    const remoteHtml=remote.map((item,idx)=>{
+      const kind=classifyNominatimResult(item);
+      const name=displaySearchName(item);
+      const country=item.address?.country || "";
+      const region=item.address?.state || item.address?.region || item.address?.province || "";
+      const subtitle=[kind,region && normalize(region)!==normalize(name) ? region : "",country].filter(Boolean).join(" · ");
+
+      return `
+        <button type="button" class="suggestion-btn search-geo-result" data-geo-index="${idx}">
+          <span class="search-result-main">${escapeHtml(name)}</span>
+          <small>${escapeHtml(subtitle)}</small>
+        </button>`;
+    }).join("");
+
+    box.innerHTML=(currentCountries + remoteHtml) || '<div class="empty">Nessun risultato trovato.</div>';
+
+    box.querySelectorAll("[data-country-iso]").forEach(btn=>{
+      btn.addEventListener("click",()=>{
+        const c=countries.find(x=>x.iso3===btn.dataset.countryIso);
+        if(!c) return;
+        document.getElementById("countryDialog").close();
+        if(SUPPORTED_VISUAL(c.iso3)) openCountry(c);
+        else openCountryOnly(c);
+      });
+    });
+
+    box.querySelectorAll("[data-geo-index]").forEach(btn=>{
+      btn.addEventListener("click",async()=>{
+        const item=remote[Number(btn.dataset.geoIndex)];
+        if(!item) return;
+        await navigateToGeoSearchResult(item);
+      });
+    });
+  },450);
+}
+
+function findRegionForPoint(lat,lon){
+  if(!currentAdmin1?.geojson?.features) return null;
+  const point=turf.point([lon,lat]);
+
+  for(const feature of currentAdmin1.geojson.features){
+    try{
+      if(turf.booleanPointInPolygon(point,feature)){
+        return {
+          name:getAreaName(feature,"ADM1"),
+          id:getAreaId(feature,"ADM1"),
+          feature
+        };
+      }
+    }catch{}
+  }
+
+  return null;
+}
+
+function findRegionBySearchName(item){
+  if(!currentAdmin1?.geojson?.features) return null;
+
+  const a=item.address || {};
+  const candidates=[
+    a.state,a.region,a.province,a.county,
+    displaySearchName(item)
+  ].filter(Boolean).map(normalize);
+
+  let best=null;
+  for(const feature of currentAdmin1.geojson.features){
+    const name=getAreaName(feature,"ADM1");
+    const n=normalize(name);
+
+    const exact=candidates.some(c=>c===n);
+    const partial=candidates.some(c=>c.includes(n) || n.includes(c));
+
+    if(exact || partial){
+      best={name,id:getAreaId(feature,"ADM1"),feature};
+      if(exact) break;
+    }
+  }
+
+  return best;
+}
+
+function findAdmin2ForPoint(lat,lon,region){
+  if(!currentAdmin2?.geojson?.features) return null;
+  const point=turf.point([lon,lat]);
+  const features=getAdmin2FeaturesForRegion(region,currentAdmin2);
+
+  for(const feature of features){
+    try{
+      if(turf.booleanPointInPolygon(point,feature)){
+        return {
+          name:getAreaName(feature,"ADM2"),
+          id:getAreaId(feature,"ADM2"),
+          feature
+        };
+      }
+    }catch{}
+  }
+
+  return null;
+}
+
+async function navigateToGeoSearchResult(item){
+  const iso2=(item.address?.country_code || "").toUpperCase();
+  let country=countryByIso2(iso2);
+
+  // Fallback ulteriore sul nome Paese restituito dalla ricerca.
+  if(!country){
+    const searchedCountryName=normalize(item.address?.country || "");
+    country=countries.find(c=>{
+      const name=normalize(c.name);
+      return name===searchedCountryName ||
+        name.includes(searchedCountryName) ||
+        searchedCountryName.includes(name);
+    }) || null;
+  }
+
+  if(!country){
+    alert("Ho trovato il luogo, ma non riesco ancora ad associarlo correttamente al Paese della mappa.");
+    return;
+  }
+
+  document.getElementById("countryDialog").close();
+
+  if(!SUPPORTED_VISUAL(country.iso3)){
+    openCountryOnly(country);
+    return;
+  }
+
+  await openCountry(country);
+
+  const lat=Number(item.lat);
+  const lon=Number(item.lon);
+  let region=findRegionForPoint(lat,lon) || findRegionBySearchName(item);
+
+  if(!region){
+    alert(`Ho trovato ${displaySearchName(item)}, ma non riesco a identificarne la regione sulla mappa.`);
+    return;
+  }
+
+  const kind=classifyNominatimResult(item);
+
+  if(kind==="Regione / area"){
+    await openRegion(region);
+    return;
+  }
+
+  await openRegion(region);
+
+  const area=findAdmin2ForPoint(lat,lon,region);
+  if(!area){
+    return;
+  }
+
+  openVisualPlaceDialog(area);
+  const city=document.getElementById("cityInput");
+  if(city) city.value=displaySearchName(item);
 }
 
 function findWorldLayerByIso(iso3) {
@@ -1808,6 +2224,26 @@ document.getElementById("backupNowBtn")?.addEventListener("click",()=>{
   exportBackup();
 });
 
+
+document.getElementById("closeRegionActionBtn")?.addEventListener("click",()=>{
+  regionActionPending=null;
+  document.getElementById("regionActionDialog").close();
+});
+document.getElementById("openRegionDetailBtn")?.addEventListener("click",async()=>{
+  if(!regionActionPending) return;
+  const region=regionActionPending;
+  regionActionPending=null;
+  document.getElementById("regionActionDialog").close();
+  await openRegion(region);
+});
+document.getElementById("markWholeRegionBtn")?.addEventListener("click",async()=>{
+  if(!regionActionPending) return;
+  const region=regionActionPending;
+  document.getElementById("regionActionDialog").close();
+  await markWholeRegionVisited(region);
+  regionActionPending=null;
+});
+
 document.getElementById("closeAreaConfirmBtn").addEventListener("click",()=>{
   areaConfirmPending=null;
   document.getElementById("areaConfirmDialog").close();
@@ -1833,7 +2269,7 @@ document.getElementById("areaConfirmForm").addEventListener("submit",e=>{
 
 
 
-document.getElementById("countrySearchInput").addEventListener("input",e=>renderCountrySuggestions(e.target.value));
+document.getElementById("countrySearchInput").addEventListener("input",e=>renderWorldSearchSuggestions(e.target.value));
 
 document.getElementById("placeForm").addEventListener("submit",e=>{
   e.preventDefault();

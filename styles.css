@@ -1338,3 +1338,56 @@ dialog::backdrop{
     gap:12px;
   }
 }
+
+
+/* V1.1.0 — ricerca globale + azioni regione */
+.search-result-main{
+  display:block;
+  font-weight:800;
+  font-size:15px;
+}
+.search-loading{
+  padding:16px;
+  color:var(--muted);
+  text-align:center;
+  font-size:13px;
+}
+.search-geo-result{
+  position:relative;
+}
+.search-geo-result::after{
+  content:"⌖";
+  position:absolute;
+  right:14px;
+  top:50%;
+  transform:translateY(-50%);
+  color:#70c8ff;
+  font-size:16px;
+}
+.region-action-buttons{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:10px;
+}
+.region-action-buttons button{
+  margin:0;
+}
+.region-action-buttons .primary{
+  background:linear-gradient(135deg,#4aaeff,#6f76ff);
+}
+
+
+/* V1.1.1 — fix dialog Regione: pulsante "Apri dettaglio" visibile */
+.confirm-dialog .region-action-buttons .secondary{
+  background:#e7eef7 !important;
+  color:#17324f !important;
+  border:1px solid #c8d7e8 !important;
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+}
+.confirm-dialog .region-action-buttons .secondary:active{
+  background:#dbe7f4 !important;
+}
+.confirm-dialog .region-action-buttons .primary{
+  color:#fff !important;
+}

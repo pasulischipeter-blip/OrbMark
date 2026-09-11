@@ -8,7 +8,7 @@
 
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
-  <link rel="stylesheet" href="styles.css?v=100" />
+  <link rel="stylesheet" href="styles.css?v=112" />
 </head>
 
 <body>
@@ -45,7 +45,7 @@
           <div><strong id="placesCount">0</strong><span>Province / Zone</span></div>
         </div>
 
-        <button class="primary add-country" id="addCountryBtn">✨ Aggiungi Paese</button>
+        <button class="primary add-country" id="addCountryBtn">🔎 Cerca luogo</button>
       </section>
 
       <section class="screen" id="countryScreen">
@@ -169,7 +169,7 @@
             </div>
             <div>
               <small>Versione</small>
-              <strong>V1.0.0</strong>
+              <strong>V1.1.2</strong>
             </div>
             <div class="wide">
               <small>Copyright</small>
@@ -193,17 +193,17 @@
     <form id="countryForm" method="dialog">
       <div class="dialog-head">
         <button type="button" id="closeCountryDialogBtn">✕</button>
-        <h2>Aggiungi Paese</h2>
+        <h2>Cerca nel mondo</h2>
         <span></span>
       </div>
 
       <label>
-        Cerca Paese
-        <input id="countrySearchInput" autocomplete="off" placeholder="Es. I → Italia, Irlanda, Islanda..." />
+        Paese, regione o città
+        <input id="countrySearchInput" autocomplete="off" placeholder="Es. Italia, Toscana, Firenze..." />
       </label>
 
       <div id="countrySuggestions" class="suggestions"></div>
-      <p class="hint">Scrivi una o più lettere: vedrai subito tutti i Paesi che iniziano così.</p>
+      <p class="hint">I Paesi vengono trovati subito; per regioni e città bastano almeno 3 caratteri.</p>
     </form>
   </dialog>
 
@@ -238,6 +238,34 @@
       </label>
 
       <p class="hint">Paese e area sono già scelti dalla mappa.</p>
+    </form>
+  </dialog>
+
+  <!-- Azioni regione / stato -->
+  <dialog id="regionActionDialog" class="confirm-dialog">
+    <form id="regionActionForm" method="dialog">
+      <div class="dialog-head">
+        <button type="button" id="closeRegionActionBtn">✕</button>
+        <h2 id="regionActionTitle">Regione</h2>
+        <span></span>
+      </div>
+
+      <div class="confirm-place-card">
+        <span class="confirm-place-icon">🗺️</span>
+        <div>
+          <strong id="regionActionName">Regione</strong>
+          <small id="regionActionCountry">Paese</small>
+        </div>
+      </div>
+
+      <p class="confirm-copy">
+        Vuoi entrare nel dettaglio oppure segnare direttamente tutta l'area come visitata?
+      </p>
+
+      <div class="region-action-buttons">
+        <button type="button" class="secondary" id="openRegionDetailBtn">Apri dettaglio</button>
+        <button type="button" class="primary" id="markWholeRegionBtn">✓ Segna tutta l'area</button>
+      </div>
     </form>
   </dialog>
 
@@ -314,6 +342,6 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
-  <script src="app.js?v=100"></script>
+  <script src="app.js?v=112"></script>
 </body>
 </html>

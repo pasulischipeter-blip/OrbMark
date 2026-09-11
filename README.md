@@ -4,19 +4,23 @@
 
 ## Versione
 
-**V1.3.6**
+**V1.3.8**
 
-## Correzione auto-update
+## Blocco viewport e tastiera
 
-La V1.3.5 conteneva ancora internamente `BUILD_VERSION = 1.3.4`, mentre `version.json`
-indicava una versione più recente. Per questo Orbmark poteva interpretare ogni avvio
-come un nuovo aggiornamento e ricaricarsi continuamente.
+Questa versione completa il blocco dell'interfaccia introdotto nella V1.3.7.
 
-Questa versione:
-- allinea `BUILD_VERSION` a **1.3.6**
-- blocca reload ripetuti della stessa versione nella stessa sessione
-- inizializza la web app solo se non è già in corso un reload di aggiornamento
-- continua a non toccare i dati salvati in `localStorage`
+- la pagina resta ferma quando si tocca un campo di testo
+- l'apertura/chiusura della tastiera non deve spostare il contenuto dietro
+- il popup di ricerca resta ancorato alla viewport
+- i risultati scorrono dentro il popup, non nella pagina
+- il browser non deve fare auto-scroll del body mentre si scrive
+- input a 16px per evitare lo zoom automatico di iOS
+- mappe e mappamondo restano interattivi
+
+## Aggiornamento
+
+`BUILD_VERSION`, `VERSION` e `version.json` sono allineati a 1.3.8.
 
 ## Copyright
 

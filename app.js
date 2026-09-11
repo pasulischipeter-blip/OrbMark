@@ -1,4 +1,4 @@
-const BUILD_VERSION = "1.3.6";
+const BUILD_VERSION = "1.3.8";
 const BUILD_STORAGE_KEY = "orbmark_build_version";
 const STORAGE_KEY = "beenthere_places_v3";
 const TOTAL_WORLD_COUNTRIES = 195;
@@ -2820,6 +2820,163 @@ document.getElementById("resetBtn").addEventListener("click",()=>{
   if(confirm("Vuoi davvero cancellare tutti i dati?")){places=[];savePlaces()}
 });
 
+
+
+
+let uiLockScrollY=0;
+let uiLockActive=false;
+let visualViewportResizeTimer=null;
+
+function isEditableTarget(target){
+  if(!(target instanceof Element)) return false;
+  return !!target.closest('input, textarea, select, [contenteditable="true"]');
+}
+
+function isDialogTarget(target){
+  if(!(target instanceof Element)) return false;
+  return !!target.closest('dialog, .dialog-card, .confirm-dialog');
+}
+
+function lockPageForKeyboard(){
+  if(uiLockActive) return;
+
+  uiLockScrollY=window.scrollY || document.documentElement.scrollTop || 0;
+  uiLockActive=true;
+
+  document.documentElement.classList.add("keyboard-lock");
+  document.body.classList.add("keyboard-lock");
+
+  document.body.style.top=`-${uiLockScrollY}px`;
+}
+
+function unlockPageForKeyboard(){
+  if(!uiLockActive) return;
+
+  document.documentElement.classList.remove("keyboard-lock");
+  document.body.classList.remove("keyboard-lock");
+
+  document.body.style.top="";
+  uiLockActive=false;
+
+  requestAnimationFrame(()=>{
+    window.scrollTo(0,uiLockScrollY);
+  });
+}
+
+function keepFocusedFieldStable(){
+  const active=document.activeElement;
+  if(!isEditableTarget(active)) return;
+
+  const dialog=active.closest("dialog");
+  if(dialog){
+    // Only scroll inside the dialog if absolutely necessary.
+    const rect=active.getBoundingClientRect();
+    const vv=window.visualViewport;
+    const visibleHeight=vv ? vv.height : window.innerHeight;
+    const topLimit=20;
+    const bottomLimit=visibleHeight-20;
+
+    if(rect.top<topLimit || rect.bottom>bottomLimit){
+      active.scrollIntoView({
+        behavior:"instant",
+        block:"nearest",
+        inline:"nearest"
+      });
+    }
+  }
+}
+
+document.addEventListener("focusin",e=>{
+  if(!isEditableTarget(e.target)) return;
+
+  // Freeze page behind forms/dialogs.
+  lockPageForKeyboard();
+
+  // Prevent iOS from trying to zoom / reposition on focus.
+  requestAnimationFrame(()=>{
+    requestAnimationFrame(()=>{
+      keepFocusedFieldStable();
+    });
+  });
+});
+
+document.addEventListener("focusout",e=>{
+  if(!isEditableTarget(e.target)) return;
+
+  setTimeout(()=>{
+    const active=document.activeElement;
+    if(!isEditableTarget(active)){
+      unlockPageForKeyboard();
+    }
+  },80);
+});
+
+// iOS Safari changes the visual viewport when the keyboard opens/closes.
+// Keep the document fixed and only let dialog internals adapt.
+if(window.visualViewport){
+  const syncViewport=()=>{
+    document.documentElement.style.setProperty(
+      "--app-vvh",
+      `${window.visualViewport.height}px`
+    );
+
+    clearTimeout(visualViewportResizeTimer);
+    visualViewportResizeTimer=setTimeout(()=>{
+      keepFocusedFieldStable();
+    },40);
+  };
+
+  window.visualViewport.addEventListener("resize",syncViewport);
+  window.visualViewport.addEventListener("scroll",syncViewport);
+  syncViewport();
+}
+
+// As an extra guard, block browser auto-scroll while a field is focused.
+// Internal dialog scrolling remains allowed.
+window.addEventListener("scroll",()=>{
+  if(!uiLockActive) return;
+
+  const currentY=window.scrollY || document.documentElement.scrollTop || 0;
+  if(Math.abs(currentY-uiLockScrollY)>1){
+    window.scrollTo(0,uiLockScrollY);
+  }
+},{passive:true});
+
+
+function isMapGestureTarget(target){
+  if(!(target instanceof Element)) return false;
+  return !!target.closest("#globeCanvas, #countryMap, .leaflet-container");
+}
+
+// iOS Safari può ancora generare gesture native anche con user-scalable=no.
+// Le blocchiamo ovunque tranne che sulle mappe.
+["gesturestart","gesturechange","gestureend"].forEach(type=>{
+  document.addEventListener(type,e=>{
+    if(!isMapGestureTarget(e.target)){
+      e.preventDefault();
+    }
+  },{passive:false});
+});
+
+// Blocca Ctrl/Cmd + wheel che farebbe zoomare la pagina su desktop,
+// lasciando libero lo zoom della mappa.
+document.addEventListener("wheel",e=>{
+  if((e.ctrlKey || e.metaKey) && !isMapGestureTarget(e.target)){
+    e.preventDefault();
+  }
+},{passive:false});
+
+// Evita il double-tap zoom della pagina su iPhone senza interferire con le mappe.
+let lastNonMapTouchEnd=0;
+document.addEventListener("touchend",e=>{
+  if(isMapGestureTarget(e.target)) return;
+
+  const now=Date.now();
+  if(now-lastNonMapTouchEnd<300){
+    e.preventDefault();
+  }
+  lastNonMapTouchEnd=now;
+},{passive:false});
 
 async function forceOrbmarkUpdateIfNeeded(){
   try{

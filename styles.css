@@ -1636,3 +1636,10 @@ dialog::backdrop{
     padding:14px 42px 14px 14px;
   }
 }
+
+
+/* V1.3.0 — worldwide administrative coverage */
+.worldwide-note{
+  color:var(--muted);
+  font-size:11px;
+}

@@ -6,7 +6,7 @@ Orbmark è una web app personale per tenere traccia dei Paesi, delle regioni e d
 
 ## Versione
 
-**V1.1.2**
+**V1.2.1**
 
 ## Funzioni principali
 
@@ -14,14 +14,15 @@ Orbmark è una web app personale per tenere traccia dei Paesi, delle regioni e d
 - ricerca per Paese, regione e città
 - selezione di singole province/zone
 - possibilità di segnare un'intera regione/stato in un solo passaggio
-- statistiche di viaggio
+- supporto alle regioni/stati che non hanno ulteriori sotto-aree
+- statistiche mondiali e per singolo Paese
 - backup e ripristino JSON
 
-## Correzioni V1.1.2
+## Migliorie V1.2.1
 
-- corretta l'associazione città → Paese nella ricerca (es. Parigi → Francia)
-- eliminati i risultati duplicati della stessa città
-- aggiunto un fallback più robusto per i codici Paese ISO2
+- aree senza sotto-aree (es. Baleari) vengono comunque salvate come regione/stato visitato
+- conteggi statistiche corretti per questi casi
+- finestra di ricerca ottimizzata su mobile: risultati più visibili senza dover spostare la pagina
 
 ## Dati
 

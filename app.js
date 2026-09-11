@@ -63,6 +63,8 @@ let regionActionPending = null;
 let worldSearchTimer = null;
 let worldSearchAbort = null;
 const worldSearchCache = new Map();
+const countryStatsCache = new Map();
+let selectedStatsCountryIso3 = "";
 let areaConfirmPending = null;
 let mobileSelectedLayer = null;
 let mobileSelectedKey = "";
@@ -293,6 +295,16 @@ function findAdmin2FeatureForPlace(place){
 }
 
 function isRegionVisited(regionFeature, regionId){
+  const directRegion=places.some(p =>
+    p.countryIso3===currentCountry?.iso3 &&
+    p.adminLevel==="ADM1" &&
+    (
+      (p.areaId && String(p.areaId)===String(regionId)) ||
+      normalize(p.areaName)===normalize(getAreaName(regionFeature,"ADM1"))
+    )
+  );
+  if(directRegion) return true;
+
   const saved=savedAreaRecordsForCurrentCountry();
   if(!saved.length) return false;
   if(currentCountry?.iso3!=="FRA" && !currentAdmin2?.geojson?.features) return false;
@@ -1487,7 +1499,44 @@ async function markWholeRegionVisited(region){
       : getAdmin2FeaturesForRegion(region, admin2);
 
     if(!children.length){
-      alert("Non ho trovato sotto-aree selezionabili per questa regione.");
+      const exists=places.some(p =>
+        p.countryIso3===currentCountry.iso3 &&
+        p.adminLevel==="ADM1" &&
+        (
+          (p.areaId && String(p.areaId)===String(region.id)) ||
+          normalize(p.areaName)===normalize(region.name)
+        )
+      );
+
+      if(!exists){
+        places.push({
+          id:makeId(),
+          countryName:currentCountry.name,
+          countryIso3:currentCountry.iso3,
+          adminLevel:"ADM1",
+          areaName:region.name,
+          areaId:String(region.id),
+          parentAreaName:"",
+          parentAreaId:"",
+          countryOnly:false,
+          areaOnly:true,
+          city:"",
+          name:"",
+          date:new Date().toISOString().slice(0,10),
+          notes:"",
+          createdAt:new Date().toISOString()
+        });
+
+        localStorage.setItem(STORAGE_KEY,JSON.stringify(places));
+        refreshUI();
+        if(countryLayer && currentLevel==="ADM1"){
+          countryLayer.setStyle(styleAdmin1Feature);
+        }
+
+        alert(`${region.name} aggiunta ai luoghi visitati.`);
+      }else{
+        alert(`${region.name} era già selezionata.`);
+      }
       return;
     }
 
@@ -1662,10 +1711,16 @@ function openCountryOnly(country) {
 /* Ricerca unificata: Paese, regione o città */
 function openCountrySearch() {
   const input=document.getElementById("countrySearchInput");
+  const dialog=document.getElementById("countryDialog");
+
   input.value="";
   renderWorldSearchSuggestions("");
-  document.getElementById("countryDialog").showModal();
-  setTimeout(()=>input.focus(),120);
+  dialog.showModal();
+
+  setTimeout(()=>{
+    dialog.scrollTop=0;
+    input.focus({preventScroll:true});
+  },120);
 }
 
 function countryByIso2(iso2=""){
@@ -2022,7 +2077,7 @@ function renderPlaces(query="") {
       <div>
         <h3>${escapeHtml(p.name || p.city || p.areaName || p.countryName)}</h3>
         <p>
-          ${p.areaOnly ? "📍 Provincia / distretto · " : ""}
+          ${p.areaOnly ? (p.adminLevel==="ADM1" ? "🗺️ Regione / stato · " : "📍 Provincia / distretto · ") : ""}
           ${[p.city,p.areaName,p.countryName].filter(Boolean).map(escapeHtml).join(" · ")}
           ${p.date?" · "+formatDate(p.date):""}
         </p>
@@ -2041,17 +2096,226 @@ function renderPlaces(query="") {
 function getVisitedParentAreaKeys(){
   return new Set(
     places
-      .filter(p=>!p.countryOnly && p.parentAreaId)
-      .map(p=>`${p.countryIso3}|${p.parentAreaId}`)
+      .filter(p=>!p.countryOnly)
+      .map(p=>{
+        if(p.adminLevel==="ADM1" && (p.areaId || p.areaName)){
+          return `${p.countryIso3}|${p.areaId || normalize(p.areaName)}`;
+        }
+        if(p.parentAreaId || p.parentAreaName){
+          return `${p.countryIso3}|${p.parentAreaId || normalize(p.parentAreaName)}`;
+        }
+        return "";
+      })
+      .filter(Boolean)
   );
 }
 
 function getVisitedLeafAreaKeys(){
   return new Set(
     places
-      .filter(p=>!p.countryOnly && (p.areaId || p.areaName))
+      .filter(p=>!p.countryOnly && p.adminLevel!=="ADM1" && (p.areaId || p.areaName))
       .map(p=>`${p.countryIso3}|${p.areaId || normalize(p.areaName)}`)
   );
+}
+
+
+function getVisitedCountryObjects(){
+  const map=new Map();
+
+  for(const p of places){
+    const key=p.countryIso3 || normalize(p.countryName);
+    if(!key) continue;
+
+    if(!map.has(key)){
+      const country=countries.find(c=>c.iso3===p.countryIso3);
+      map.set(key,{
+        iso3:p.countryIso3 || country?.iso3 || "",
+        name:p.countryName || country?.name || key
+      });
+    }
+  }
+
+  return [...map.values()].sort((a,b)=>a.name.localeCompare(b.name,"it"));
+}
+
+async function fetchCountrySubdivisionTotals(iso3){
+  if(countryStatsCache.has(iso3)) return countryStatsCache.get(iso3);
+
+  if(!SUPPORTED_VISUAL(iso3)){
+    const unsupported={supported:false,regionsTotal:0,areasTotal:0};
+    countryStatsCache.set(iso3,unsupported);
+    return unsupported;
+  }
+
+  try{
+    let adm1=null;
+    let adm2=null;
+
+    if(iso3==="FRA"){
+      adm1=await fetchBoundary("FRA","ADM1");
+
+      const r=await fetch(FRANCE_DEPARTMENTS_GEOJSON,{cache:"no-store"});
+      if(!r.ok) throw new Error(`Francia ADM2: HTTP ${r.status}`);
+      const geojson=await r.json();
+      if(!geojson || !Array.isArray(geojson.features)){
+        throw new Error("Francia ADM2: GeoJSON non valido");
+      }
+
+      adm2={level:"ADM2",geojson};
+    }else{
+      [adm1,adm2]=await Promise.all([
+        fetchBoundary(iso3,"ADM1"),
+        fetchBoundary(iso3,"ADM2")
+      ]);
+    }
+
+    const result={
+      supported:true,
+      regionsTotal:adm1?.geojson?.features?.length || 0,
+      areasTotal:adm2?.geojson?.features?.length || 0
+    };
+
+    countryStatsCache.set(iso3,result);
+    return result;
+  }catch(err){
+    console.warn("Statistiche Paese non disponibili:",iso3,err);
+    const failed={supported:false,regionsTotal:0,areasTotal:0,error:true};
+    countryStatsCache.set(iso3,failed);
+    return failed;
+  }
+}
+
+function getCountryVisitedSubdivisionCounts(iso3){
+  const cp=places.filter(p=>p.countryIso3===iso3 && !p.countryOnly);
+
+  const regionKeys=new Set(
+    cp.map(p=>{
+      if(p.adminLevel==="ADM1" && (p.areaId || p.areaName)){
+        return String(p.areaId || normalize(p.areaName));
+      }
+      if(p.parentAreaId || p.parentAreaName){
+        return String(p.parentAreaId || normalize(p.parentAreaName));
+      }
+      return "";
+    }).filter(Boolean)
+  );
+
+  const areaKeys=new Set(
+    cp.filter(p=>p.adminLevel!=="ADM1" && (p.areaId || p.areaName))
+      .map(p=>String(p.areaId || normalize(p.areaName)))
+  );
+
+  return {
+    regionsVisited:regionKeys.size,
+    areasVisited:areaKeys.size
+  };
+}
+
+function formatPct(value){
+  return value.toLocaleString("it-IT",{
+    minimumFractionDigits:1,
+    maximumFractionDigits:1
+  });
+}
+
+function countryProgressCard(label,visited,total,icon){
+  const pct=total ? Math.min(100,(visited/total)*100) : 0;
+
+  return `
+    <div class="country-progress-card">
+      <div class="country-progress-top">
+        <div class="country-progress-icon">${icon}</div>
+        <div>
+          <small>${escapeHtml(label)}</small>
+          <strong>${visited} / ${total}</strong>
+        </div>
+        <b>${formatPct(pct)}%</b>
+      </div>
+
+      <div class="country-progress-track">
+        <div class="country-progress-fill" style="width:${pct}%"></div>
+      </div>
+    </div>
+  `;
+}
+
+async function renderCountryStats(iso3){
+  const box=document.getElementById("countryStatsContent");
+  if(!box) return;
+
+  if(!iso3){
+    box.innerHTML='<div class="country-stats-empty">Seleziona un Paese visitato.</div>';
+    return;
+  }
+
+  const country=getVisitedCountryObjects().find(c=>c.iso3===iso3);
+  box.innerHTML='<div class="country-stats-loading">Calcolo copertura geografica…</div>';
+
+  const totals=await fetchCountrySubdivisionTotals(iso3);
+
+  if(selectedStatsCountryIso3!==iso3) return;
+
+  if(!totals.supported){
+    box.innerHTML=`
+      <div class="country-stats-empty">
+        <strong>${escapeHtml(country?.name || iso3)}</strong><br>
+        Il dettaglio regioni/province non è ancora disponibile per questo Paese.
+      </div>`;
+    return;
+  }
+
+  const counts=getCountryVisitedSubdivisionCounts(iso3);
+  const regionPct=totals.regionsTotal ? (counts.regionsVisited/totals.regionsTotal)*100 : 0;
+  const areaPct=totals.areasTotal ? (counts.areasVisited/totals.areasTotal)*100 : 0;
+
+  box.innerHTML=`
+    <div class="country-stats-country">
+      <div>
+        <small>Paese selezionato</small>
+        <strong>${escapeHtml(country?.name || iso3)}</strong>
+      </div>
+      <span>${formatPct(regionPct)}% regioni</span>
+    </div>
+
+    <div class="country-progress-grid">
+      ${countryProgressCard("Regioni / Stati",counts.regionsVisited,totals.regionsTotal,"🗺️")}
+      ${countryProgressCard("Province / Zone",counts.areasVisited,totals.areasTotal,"📍")}
+    </div>
+
+    <div class="country-coverage-hero">
+      <div class="country-coverage-ring" style="--country-pct:${areaPct}%">
+        <strong>${formatPct(areaPct)}%</strong>
+        <span>copertura<br>territoriale*</span>
+      </div>
+      <p>*Basata sulle province/zone amministrative selezionate, non sulla superficie geografica reale.</p>
+    </div>
+  `;
+}
+
+function populateCountryStatsSelect(){
+  const select=document.getElementById("countryStatsSelect");
+  if(!select) return;
+
+  const visited=getVisitedCountryObjects();
+  const previous=selectedStatsCountryIso3 || select.value;
+
+  select.innerHTML=visited.length
+    ? visited.map(c=>`<option value="${escapeHtml(c.iso3)}">${escapeHtml(c.name)}</option>`).join("")
+    : '<option value="">Nessun Paese</option>';
+
+  if(!visited.length){
+    selectedStatsCountryIso3="";
+    renderCountryStats("");
+    return;
+  }
+
+  const selected=visited.some(c=>c.iso3===previous)
+    ? previous
+    : visited.find(c=>SUPPORTED_VISUAL(c.iso3))?.iso3 || visited[0].iso3;
+
+  selectedStatsCountryIso3=selected;
+  select.value=selected;
+  renderCountryStats(selected);
 }
 
 function renderStats() {
@@ -2090,9 +2354,11 @@ function renderStats() {
     worldProgressBarFill.setAttribute("aria-valuenow",countryPercent.toFixed(1));
   }
 
+  populateCountryStatsSelect();
+
   const recent=places.filter(p=>!p.countryOnly).sort((a,b)=>(b.createdAt||"").localeCompare(a.createdAt||"")).slice(0,5);
   document.getElementById("recentPlaces").innerHTML=recent.length
-    ? recent.map(p=>`<p>📍 <strong>${escapeHtml(p.name || p.city || p.areaName || p.countryName)}</strong><br><small>${p.areaOnly ? "Provincia / distretto · " : ""}${escapeHtml([p.areaName,p.countryName].filter(Boolean).join(" · "))}</small></p>`).join("")
+    ? recent.map(p=>`<p>📍 <strong>${escapeHtml(p.name || p.city || p.areaName || p.countryName)}</strong><br><small>${p.areaOnly ? (p.adminLevel==="ADM1" ? "Regione / stato · " : "Provincia / distretto · ") : ""}${escapeHtml([p.areaName,p.countryName].filter(Boolean).join(" · "))}</small></p>`).join("")
     : '<p class="empty">Ancora nessun luogo.</p>';
 }
 
@@ -2107,8 +2373,18 @@ function refreshUI() {
 
   if(currentCountry){
     const cp=places.filter(p=>p.countryIso3===currentCountry.iso3 && !p.countryOnly);
-    const parentKeys=new Set(cp.filter(p=>p.parentAreaId).map(p=>String(p.parentAreaId)));
-    const leafKeys=new Set(cp.map(p=>String(p.areaId || normalize(p.areaName))).filter(Boolean));
+    const parentKeys=new Set(
+      cp.map(p=>{
+        if(p.adminLevel==="ADM1") return String(p.areaId || normalize(p.areaName));
+        if(p.parentAreaId || p.parentAreaName) return String(p.parentAreaId || normalize(p.parentAreaName));
+        return "";
+      }).filter(Boolean)
+    );
+    const leafKeys=new Set(
+      cp.filter(p=>p.adminLevel!=="ADM1")
+        .map(p=>String(p.areaId || normalize(p.areaName)))
+        .filter(Boolean)
+    );
 
     document.getElementById("countryAreasCount").textContent=parentKeys.size;
     document.getElementById("countryPlacesCount").textContent=leafKeys.size;
@@ -2305,6 +2581,13 @@ document.getElementById("countryOnlyForm").addEventListener("submit",e=>{
 });
 
 document.getElementById("searchInput").addEventListener("input",e=>renderPlaces(e.target.value));
+
+document.getElementById("countryStatsSelect")?.addEventListener("change",e=>{
+  selectedStatsCountryIso3=e.target.value;
+  renderCountryStats(selectedStatsCountryIso3);
+});
+
+
 
 /* Backup */
 function exportBackup(){

@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#07131f" />
+  <title>Orbmark</title>
+
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <link rel="stylesheet" href="styles.css?v=100" />
+</head>
+
+<body>
+  <div class="ambient ambient-1"></div>
+  <div class="ambient ambient-2"></div>
+  <div class="ambient ambient-3"></div>
+  <div id="app">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="brand-logo" aria-hidden="true">
+          <span class="brand-logo-ring ring-outer"></span>
+          <span class="brand-logo-ring ring-inner"></span>
+          <span class="brand-logo-core"></span>
+        </div>
+        <div class="topbar-copy">
+          <h1>Orb<span>mark</span></h1>
+          <p>Lascia il tuo segno sul mondo 🌍</p>
+        </div>
+      </div>
+      <button class="icon-btn" id="settingsBtn" aria-label="Impostazioni">⚙️</button>
+    </header>
+
+    <main>
+      <section class="screen active" id="homeScreen">
+        <div class="map-wrap">
+          <div id="worldMap" class="map globe-map"><canvas id="globeCanvas" aria-label="Mappamondo interattivo"></canvas><div class="globe-controls"><button type="button" id="globeZoomInBtn" aria-label="Ingrandisci mappamondo">＋</button><button type="button" id="globeZoomOutBtn" aria-label="Riduci mappamondo">－</button></div></div>
+          <div class="map-tip">Ruota, zooma e tocca un Paese</div>
+          <div class="map-badge">Travel map</div>
+        </div>
+
+        <div class="stats-card">
+          <div><strong id="countriesCount">0</strong><span>Paesi visitati</span></div>
+          <div><strong id="areasCount">0</strong><span>Regioni / Stati</span></div>
+          <div><strong id="placesCount">0</strong><span>Province / Zone</span></div>
+        </div>
+
+        <button class="primary add-country" id="addCountryBtn">✨ Aggiungi Paese</button>
+      </section>
+
+      <section class="screen" id="countryScreen">
+        <div class="subheader">
+          <button class="back-btn" id="countryBackBtn">‹</button>
+          <div class="country-head-copy">
+            <h2 id="countryTitle">Paese</h2>
+            <p id="countrySubtitle">Regioni / Stati</p>
+          </div>
+        </div>
+
+        <div class="breadcrumb" id="breadcrumb">
+          <button type="button" id="crumbCountry">Paese</button>
+          <span id="crumbSep" hidden>›</span>
+          <button type="button" id="crumbRegion" hidden></button>
+        </div>
+
+        <div class="map-wrap">
+          <div id="countryMap" class="map country-map"></div>
+          <div class="map-tip" id="countryMapTip">Tocca una regione / stato</div>
+          <div class="map-badge">Detail view</div>
+        </div>
+
+        <div class="stats-card compact">
+          <div><strong id="countryAreasCount">0</strong><span>Regioni / Stati</span></div>
+          <div><strong id="countryPlacesCount">0</strong><span>Province / Zone</span></div>
+        </div>
+
+        <button class="secondary country-only-btn" id="markCountryBtn">✓ Segna il Paese come visitato</button>
+      </section>
+
+      <section class="screen" id="placesScreen">
+        <div class="subheader">
+          <div>
+            <h2>I miei luoghi</h2>
+            <p>Tutti i posti che hai salvato</p>
+          </div>
+        </div>
+        <input id="searchInput" class="search" placeholder="Cerca luogo, città, area, Paese..." />
+        <div id="placesList" class="places-list"></div>
+      </section>
+
+      <section class="screen" id="statsScreen">
+        <div class="subheader">
+          <div>
+            <h2>Le mie statistiche</h2>
+            <p>Il tuo mondo, un posto alla volta</p>
+          </div>
+        </div>
+        <div class="stats-overview">
+          <div class="world-progress-card wow-card">
+            <div class="world-progress-graphic">
+              <div id="worldCountriesChart" class="world-chart" style="--world-pct:0%;">
+                <div class="world-chart-center">
+                  <strong id="worldCountriesPercentBig">0,0%</strong>
+                  <span>del mondo</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="world-progress-copy">
+              <span class="eyebrow">Statistiche globali</span>
+              <h3>Mondo esplorato</h3>
+
+              <div class="world-legend compact">
+                <div class="legend-item">
+                  <span class="legend-dot visited"></span>
+                  <div>
+                    <strong id="worldVisitedCount">0</strong>
+                    <small>Visitati</small>
+                  </div>
+                </div>
+
+                <div class="legend-item">
+                  <span class="legend-dot remaining"></span>
+                  <div>
+                    <strong id="worldRemainingCount">195</strong>
+                    <small>Restanti</small>
+                  </div>
+                </div>
+              </div>
+
+              <div class="world-progress-bar-wrap">
+                <div class="world-progress-bar">
+                  <div id="worldProgressBarFill" class="world-progress-bar-fill" style="width:0%"></div>
+                </div>
+                <div class="world-progress-bar-meta">
+                  <span>Progressione globale</span>
+                  <span>195 Paesi totali</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Ultimi luoghi aggiunti</h3>
+          <div id="recentPlaces"></div>
+        </div>
+      </section>
+
+      <section class="screen" id="settingsScreen">
+        <div class="subheader">
+          <div>
+            <h2>Impostazioni</h2>
+            <p>I dati restano sul dispositivo</p>
+          </div>
+        </div>
+        <div class="settings-list">
+          <button id="exportBtn">⬇️ Esporta backup</button>
+          <label class="import-label">⬆️ Importa backup
+            <input type="file" id="importInput" accept="application/json" hidden />
+          </label>
+          <button id="resetBtn" class="danger">🗑️ Cancella tutti i dati</button>
+        </div>
+
+        <div class="about-card about-card-compact">
+          <div class="about-meta">
+            <div>
+              <small>Nome</small>
+              <strong>Orbmark</strong>
+            </div>
+            <div>
+              <small>Versione</small>
+              <strong>V1.0.0</strong>
+            </div>
+            <div class="wide">
+              <small>Copyright</small>
+              <strong>© 2026 Orbmark. Tutti i diritti riservati.</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav">
+      <button class="nav-item active" data-screen="homeScreen">🌐<span>Mappa</span></button>
+      <button class="nav-item" data-screen="placesScreen">📍<span>Luoghi</span></button>
+      <button class="nav-item" data-screen="statsScreen">📊<span>Statistiche</span></button>
+      <button class="nav-item" data-screen="settingsScreen">•••<span>Altro</span></button>
+    </nav>
+  </div>
+
+  <!-- Ricerca Paese -->
+  <dialog id="countryDialog">
+    <form id="countryForm" method="dialog">
+      <div class="dialog-head">
+        <button type="button" id="closeCountryDialogBtn">✕</button>
+        <h2>Aggiungi Paese</h2>
+        <span></span>
+      </div>
+
+      <label>
+        Cerca Paese
+        <input id="countrySearchInput" autocomplete="off" placeholder="Es. I → Italia, Irlanda, Islanda..." />
+      </label>
+
+      <div id="countrySuggestions" class="suggestions"></div>
+      <p class="hint">Scrivi una o più lettere: vedrai subito tutti i Paesi che iniziano così.</p>
+    </form>
+  </dialog>
+
+  <!-- Inserimento visuale area -->
+  <dialog id="placeDialog">
+    <form id="placeForm" method="dialog">
+      <div class="dialog-head">
+        <button type="button" id="closePlaceDialogBtn">✕</button>
+        <h2>Nuovo luogo</h2>
+        <button type="submit" class="save-btn">Salva</button>
+      </div>
+
+      <div class="selected-zone">
+        <strong id="selectedCountryLabel"></strong>
+        <span id="selectedAreaLabel"></span>
+      </div>
+
+      <label>Città
+        <input id="cityInput" placeholder="Es. Cortona" />
+      </label>
+
+      <label>Nome luogo
+        <input id="placeNameInput" placeholder="Es. Piazza Grande" />
+      </label>
+
+      <label>Data
+        <input id="dateInput" type="date" />
+      </label>
+
+      <label>Note
+        <textarea id="notesInput" maxlength="200" placeholder="Un ricordo, una nota..."></textarea>
+      </label>
+
+      <p class="hint">Paese e area sono già scelti dalla mappa.</p>
+    </form>
+  </dialog>
+
+  <!-- Conferma aggiunta provincia / distretto -->
+  <dialog id="areaConfirmDialog" class="confirm-dialog">
+    <form id="areaConfirmForm" method="dialog">
+      <div class="dialog-head">
+        <button type="button" id="closeAreaConfirmBtn">✕</button>
+        <h2>Aggiungi alla lista?</h2>
+        <span></span>
+      </div>
+
+      <div class="confirm-place-card">
+        <span class="confirm-place-icon">📍</span>
+        <div>
+          <strong id="areaConfirmName">Area</strong>
+          <small id="areaConfirmPath">Paese</small>
+        </div>
+      </div>
+
+      <p class="confirm-copy">
+        Vuoi segnare questa zona come visitata e aggiungerla ai tuoi luoghi?
+      </p>
+
+      <div class="confirm-actions">
+        <button type="button" class="secondary" id="cancelAreaConfirmBtn">Annulla</button>
+        <button type="submit" class="primary">✓ Aggiungi</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Promemoria backup settimanale -->
+  <dialog id="backupReminderDialog" class="confirm-dialog">
+    <form id="backupReminderForm" method="dialog">
+      <div class="dialog-head">
+        <button type="button" id="closeBackupReminderBtn">✕</button>
+        <h2>Backup settimanale</h2>
+        <span></span>
+      </div>
+
+      <div class="confirm-place-card">
+        <span class="confirm-place-icon">💾</span>
+        <div>
+          <strong>Salviamo una copia?</strong>
+          <small id="backupReminderText">È passato un po' dall'ultimo backup esportato.</small>
+        </div>
+      </div>
+
+      <p class="confirm-copy">
+        Ti consiglio di esportare il backup e conservarlo su iCloud Drive, Google Drive o Files.
+      </p>
+
+      <div class="confirm-actions">
+        <button type="button" class="secondary" id="backupLaterBtn">Più tardi</button>
+        <button type="button" class="primary" id="backupNowBtn">⬇️ Esporta ora</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Paese non ancora supportato nelle suddivisioni -->
+  <dialog id="countryOnlyDialog">
+    <form id="countryOnlyForm" method="dialog">
+      <div class="dialog-head">
+        <button type="button" id="closeCountryOnlyBtn">✕</button>
+        <h2 id="countryOnlyTitle">Paese</h2>
+        <button type="submit" class="save-btn">Segna</button>
+      </div>
+      <p class="country-only-copy">
+        Per ora il dettaglio delle aree è disponibile per <strong>Europa e Stati Uniti</strong>.
+        Puoi comunque segnare questo Paese come visitato.
+      </p>
+    </form>
+  </dialog>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
+  <script src="app.js?v=100"></script>
+</body>
+</html>

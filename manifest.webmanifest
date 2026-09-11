@@ -1,0 +1,10 @@
+{
+  "name": "Orbmark",
+  "short_name": "Orbmark",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#07131f",
+  "theme_color": "#07131f",
+  "description": "Lascia il tuo segno sul mondo.",
+  "icons": []
+}

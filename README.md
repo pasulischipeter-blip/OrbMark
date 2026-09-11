@@ -4,23 +4,22 @@
 
 ## Versione
 
-**V1.3.8**
+**V1.3.9**
 
-## Blocco viewport e tastiera
+## Fix regressione V1.3.8
 
-Questa versione completa il blocco dell'interfaccia introdotto nella V1.3.7.
+La V1.3.8 applicava il blocco tastiera/viewport in modo troppo globale e poteva
+interferire con il passaggio Regione → sotto-zone.
 
-- la pagina resta ferma quando si tocca un campo di testo
-- l'apertura/chiusura della tastiera non deve spostare il contenuto dietro
-- il popup di ricerca resta ancorato alla viewport
-- i risultati scorrono dentro il popup, non nella pagina
-- il browser non deve fare auto-scroll del body mentre si scrive
-- input a 16px per evitare lo zoom automatico di iOS
-- mappe e mappamondo restano interattivi
+Questa versione parte dalla V1.3.7 stabile e applica il blocco tastiera soltanto
+alla finestra **Cerca nel mondo**:
 
-## Aggiornamento
-
-`BUILD_VERSION`, `VERSION` e `version.json` sono allineati a 1.3.8.
+- nessun blocco globale dei dialog
+- nessun `position: fixed` sul body
+- nessuna interferenza con Leaflet o caricamento ADM2
+- ricerca ferma durante la digitazione
+- risultati scorrono solo dentro il popup
+- input ricerca a 16px per evitare auto-zoom iOS
 
 ## Copyright
 

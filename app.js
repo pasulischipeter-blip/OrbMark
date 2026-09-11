@@ -1,4 +1,4 @@
-const BUILD_VERSION = "1.3.8";
+const BUILD_VERSION = "1.3.9";
 const BUILD_STORAGE_KEY = "orbmark_build_version";
 const STORAGE_KEY = "beenthere_places_v3";
 const TOTAL_WORLD_COUNTRIES = 195;
@@ -2823,124 +2823,77 @@ document.getElementById("resetBtn").addEventListener("click",()=>{
 
 
 
-let uiLockScrollY=0;
-let uiLockActive=false;
-let visualViewportResizeTimer=null;
+let searchDialogScrollY=0;
+let searchDialogKeyboardLock=false;
+let searchViewportTimer=null;
 
-function isEditableTarget(target){
-  if(!(target instanceof Element)) return false;
-  return !!target.closest('input, textarea, select, [contenteditable="true"]');
+function lockSearchPage(){
+  if(searchDialogKeyboardLock) return;
+
+  searchDialogScrollY=window.scrollY || document.documentElement.scrollTop || 0;
+  searchDialogKeyboardLock=true;
+  document.documentElement.classList.add("search-keyboard-lock");
+  document.body.classList.add("search-keyboard-lock");
 }
 
-function isDialogTarget(target){
-  if(!(target instanceof Element)) return false;
-  return !!target.closest('dialog, .dialog-card, .confirm-dialog');
-}
+function unlockSearchPage(){
+  if(!searchDialogKeyboardLock) return;
 
-function lockPageForKeyboard(){
-  if(uiLockActive) return;
-
-  uiLockScrollY=window.scrollY || document.documentElement.scrollTop || 0;
-  uiLockActive=true;
-
-  document.documentElement.classList.add("keyboard-lock");
-  document.body.classList.add("keyboard-lock");
-
-  document.body.style.top=`-${uiLockScrollY}px`;
-}
-
-function unlockPageForKeyboard(){
-  if(!uiLockActive) return;
-
-  document.documentElement.classList.remove("keyboard-lock");
-  document.body.classList.remove("keyboard-lock");
-
-  document.body.style.top="";
-  uiLockActive=false;
+  document.documentElement.classList.remove("search-keyboard-lock");
+  document.body.classList.remove("search-keyboard-lock");
+  searchDialogKeyboardLock=false;
 
   requestAnimationFrame(()=>{
-    window.scrollTo(0,uiLockScrollY);
+    window.scrollTo(0,searchDialogScrollY);
   });
 }
 
-function keepFocusedFieldStable(){
-  const active=document.activeElement;
-  if(!isEditableTarget(active)) return;
+function syncSearchViewport(){
+  if(!window.visualViewport) return;
 
-  const dialog=active.closest("dialog");
-  if(dialog){
-    // Only scroll inside the dialog if absolutely necessary.
-    const rect=active.getBoundingClientRect();
-    const vv=window.visualViewport;
-    const visibleHeight=vv ? vv.height : window.innerHeight;
-    const topLimit=20;
-    const bottomLimit=visibleHeight-20;
+  document.documentElement.style.setProperty(
+    "--search-vvh",
+    `${window.visualViewport.height}px`
+  );
 
-    if(rect.top<topLimit || rect.bottom>bottomLimit){
-      active.scrollIntoView({
-        behavior:"instant",
-        block:"nearest",
-        inline:"nearest"
-      });
+  clearTimeout(searchViewportTimer);
+  searchViewportTimer=setTimeout(()=>{
+    const input=document.getElementById("countrySearchInput");
+    const dialog=document.getElementById("countryDialog");
+
+    if(
+      dialog?.open &&
+      document.activeElement===input
+    ){
+      dialog.scrollTop=0;
     }
-  }
+  },30);
 }
 
-document.addEventListener("focusin",e=>{
-  if(!isEditableTarget(e.target)) return;
-
-  // Freeze page behind forms/dialogs.
-  lockPageForKeyboard();
-
-  // Prevent iOS from trying to zoom / reposition on focus.
-  requestAnimationFrame(()=>{
-    requestAnimationFrame(()=>{
-      keepFocusedFieldStable();
-    });
-  });
+document.getElementById("countrySearchInput")?.addEventListener("focus",()=>{
+  lockSearchPage();
+  syncSearchViewport();
 });
 
-document.addEventListener("focusout",e=>{
-  if(!isEditableTarget(e.target)) return;
-
+document.getElementById("countrySearchInput")?.addEventListener("blur",()=>{
   setTimeout(()=>{
-    const active=document.activeElement;
-    if(!isEditableTarget(active)){
-      unlockPageForKeyboard();
+    const dialog=document.getElementById("countryDialog");
+    if(!dialog?.open || document.activeElement!==document.getElementById("countrySearchInput")){
+      unlockSearchPage();
     }
   },80);
 });
 
-// iOS Safari changes the visual viewport when the keyboard opens/closes.
-// Keep the document fixed and only let dialog internals adapt.
+// If search dialog closes while keyboard is open, unlock immediately.
+document.getElementById("countryDialog")?.addEventListener("close",()=>{
+  unlockSearchPage();
+});
+
 if(window.visualViewport){
-  const syncViewport=()=>{
-    document.documentElement.style.setProperty(
-      "--app-vvh",
-      `${window.visualViewport.height}px`
-    );
-
-    clearTimeout(visualViewportResizeTimer);
-    visualViewportResizeTimer=setTimeout(()=>{
-      keepFocusedFieldStable();
-    },40);
-  };
-
-  window.visualViewport.addEventListener("resize",syncViewport);
-  window.visualViewport.addEventListener("scroll",syncViewport);
-  syncViewport();
+  window.visualViewport.addEventListener("resize",syncSearchViewport);
+  window.visualViewport.addEventListener("scroll",syncSearchViewport);
+  syncSearchViewport();
 }
-
-// As an extra guard, block browser auto-scroll while a field is focused.
-// Internal dialog scrolling remains allowed.
-window.addEventListener("scroll",()=>{
-  if(!uiLockActive) return;
-
-  const currentY=window.scrollY || document.documentElement.scrollTop || 0;
-  if(Math.abs(currentY-uiLockScrollY)>1){
-    window.scrollTo(0,uiLockScrollY);
-  }
-},{passive:true});
 
 
 function isMapGestureTarget(target){

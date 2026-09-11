@@ -1699,80 +1699,50 @@ div{
 }
 
 
-/* V1.3.8 — Keyboard / viewport lock */
+/* V1.3.9 — safe keyboard lock, only for world search */
 :root{
-  --app-vvh:100dvh;
+  --search-vvh:100dvh;
 }
 
-html.keyboard-lock,
-body.keyboard-lock{
-  overflow:hidden !important;
+html.search-keyboard-lock,
+body.search-keyboard-lock{
   overscroll-behavior:none !important;
 }
 
-body.keyboard-lock{
-  position:fixed !important;
-  left:0;
-  right:0;
-  width:100%;
+/* Prevent page drift while typing, without position:fixed.
+   This avoids interfering with Leaflet / ADM navigation. */
+body.search-keyboard-lock{
+  overflow:hidden !important;
 }
 
-/* Dialogs stay anchored to the visible viewport while keyboard opens */
-dialog[open]{
-  position:fixed !important;
-  inset:auto !important;
-}
-
-/* Search dialog: stable placement, no page jump */
+/* Search dialog alone follows the visible viewport. */
 #countryDialog[open]{
+  position:fixed !important;
   top:max(8px,env(safe-area-inset-top)) !important;
   left:50% !important;
+  right:auto !important;
+  bottom:auto !important;
   transform:translateX(-50%) !important;
   width:min(calc(100% - 16px),680px) !important;
   height:min(72dvh,620px) !important;
-  max-height:calc(var(--app-vvh) - 16px - env(safe-area-inset-top)) !important;
+  max-height:calc(var(--search-vvh) - 16px - env(safe-area-inset-top)) !important;
   margin:0 !important;
   overflow:hidden !important;
 }
 
-/* Form structure inside search dialog remains stable */
 #countryDialog #countryForm{
   min-height:0;
   overflow:hidden;
 }
 
-#countryDialog .dialog-head,
-#countryDialog label,
-#countryDialog .hint{
-  flex:0 0 auto;
-}
-
 #countryDialog .suggestions{
-  flex:1 1 auto;
   min-height:0 !important;
   overflow-y:auto !important;
   -webkit-overflow-scrolling:touch;
   overscroll-behavior:contain;
 }
 
-/* Inputs: avoid iOS auto-zoom by keeping text at least 16px */
-input,
-textarea,
-select{
+/* Avoid iOS input auto-zoom specifically in search. */
+#countrySearchInput{
   font-size:16px !important;
-}
-
-/* Other modal forms: keep them on-screen without moving the page */
-dialog[open]:not(#countryDialog){
-  max-height:calc(var(--app-vvh) - 16px - env(safe-area-inset-top)) !important;
-  overflow:auto;
-  overscroll-behavior:contain;
-}
-
-/* Keep the underlying app completely still while typing */
-body.keyboard-lock .app,
-body.keyboard-lock .screen,
-body.keyboard-lock .topbar,
-body.keyboard-lock .bottom-nav{
-  transform:none !important;
 }

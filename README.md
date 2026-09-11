@@ -4,22 +4,24 @@
 
 ## Versione
 
-**V1.3.9**
+**V1.3.10 – QA / Hardening**
 
-## Fix regressione V1.3.8
+Controlli eseguiti:
+- sintassi JavaScript
+- ID HTML ↔ riferimenti JavaScript
+- ID duplicati
+- funzioni duplicate
+- listener duplicati
+- allineamento versione / auto-update
+- flusso Paese → Regione → sotto-zone
+- salvataggio province/zone
+- ricerca e blocco tastiera
 
-La V1.3.8 applicava il blocco tastiera/viewport in modo troppo globale e poteva
-interferire con il passaggio Regione → sotto-zone.
-
-Questa versione parte dalla V1.3.7 stabile e applica il blocco tastiera soltanto
-alla finestra **Cerca nel mondo**:
-
-- nessun blocco globale dei dialog
-- nessun `position: fixed` sul body
-- nessuna interferenza con Leaflet o caricamento ADM2
-- ricerca ferma durante la digitazione
-- risultati scorrono solo dentro il popup
-- input ricerca a 16px per evitare auto-zoom iOS
+Correzioni:
+- rimossi gli apici visibili attorno a “dettaglio aree disponibile”
+- un errore di rete ADM2 non viene più memorizzato come “nessuna sotto-zona”
+- su errore temporaneo compare “Riprova dettaglio”
+- “Segna tutta l'area” non salva più una regione incompleta se il download ADM2 fallisce
 
 ## Copyright
 

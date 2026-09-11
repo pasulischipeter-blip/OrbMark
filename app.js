@@ -1747,6 +1747,47 @@ function renderAdmin2ForRegion(region){
   }
 }
 
+
+function markAreaVisited(area){
+  if(!area || !currentCountry) return false;
+
+  const areaId=String(area.id || "");
+  const areaName=area.name || "";
+
+  const exists=places.some(p =>
+    p.countryIso3===currentCountry.iso3 &&
+    p.adminLevel==="ADM2" &&
+    (
+      (areaId && p.areaId && String(p.areaId)===areaId) ||
+      normalize(p.areaName)===normalize(areaName)
+    )
+  );
+
+  if(exists) return false;
+
+  places.push({
+    id:makeId(),
+    countryName:currentCountry.name,
+    countryIso3:currentCountry.iso3,
+    adminLevel:"ADM2",
+    areaName,
+    areaId,
+    parentAreaName:selectedRegion?.name || "",
+    parentAreaId:selectedRegion?.id ? String(selectedRegion.id) : "",
+    countryOnly:false,
+    areaOnly:true,
+    city:"",
+    name:"",
+    date:new Date().toISOString().slice(0,10),
+    notes:"",
+    createdAt:new Date().toISOString()
+  });
+
+  savePlaces();
+  refreshUI();
+  return true;
+}
+
 function openAreaConfirm(area){
   areaConfirmPending=area;
 
@@ -2665,13 +2706,37 @@ document.getElementById("areaConfirmForm").addEventListener("submit",e=>{
   if(!areaConfirmPending) return;
 
   const area=areaConfirmPending;
-  areaConfirmPending=null;
+  const dialog=document.getElementById("areaConfirmDialog");
+  const addBtn=e.submitter;
 
-  markAreaVisited(area);
-  document.getElementById("areaConfirmDialog").close();
+  if(addBtn){
+    addBtn.disabled=true;
+    addBtn.textContent="Aggiunta…";
+  }
 
-  if(countryLayer && currentLevel==="ADM2"){
-    countryLayer.setStyle(styleAdmin2Feature);
+  try{
+    const added=markAreaVisited(area);
+    areaConfirmPending=null;
+
+    if(dialog?.open) dialog.close();
+
+    if(countryLayer && currentLevel==="ADM2"){
+      countryLayer.setStyle(styleAdmin2Feature);
+    }
+
+    refreshUI();
+
+    if(!added){
+      console.info("Area già presente:",area.name);
+    }
+  }catch(err){
+    console.error("Errore aggiunta area:",err);
+    alert("Non sono riuscito ad aggiungere questa zona. Riprova.");
+  }finally{
+    if(addBtn){
+      addBtn.disabled=false;
+      addBtn.textContent="✓ Aggiungi";
+    }
   }
 });
 

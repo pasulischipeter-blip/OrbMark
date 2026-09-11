@@ -4,19 +4,19 @@
 
 ## Versione
 
-**V1.3.5**
+**V1.3.6**
 
-## Correzione
+## Correzione auto-update
 
-- ripristinata la funzione che salva province e zone visitate
-- corretto il pulsante **✓ Aggiungi** nel popup di conferma
-- dopo l'aggiunta vengono aggiornati subito mappa, contatori e statistiche
+La V1.3.5 conteneva ancora internamente `BUILD_VERSION = 1.3.4`, mentre `version.json`
+indicava una versione più recente. Per questo Orbmark poteva interpretare ogni avvio
+come un nuovo aggiornamento e ricaricarsi continuamente.
 
-Il bug era causato dalla funzione `markAreaVisited()` mancante: il pulsante riceveva il tap, ma il salvataggio si interrompeva con un errore JavaScript.
-
-## Dati
-
-I dati vengono salvati localmente nel browser/dispositivo.
+Questa versione:
+- allinea `BUILD_VERSION` a **1.3.6**
+- blocca reload ripetuti della stessa versione nella stessa sessione
+- inizializza la web app solo se non è già in corso un reload di aggiornamento
+- continua a non toccare i dati salvati in `localStorage`
 
 ## Copyright
 

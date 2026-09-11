@@ -1,4 +1,4 @@
-const BUILD_VERSION = "1.3.4";
+const BUILD_VERSION = "1.3.6";
 const BUILD_STORAGE_KEY = "orbmark_build_version";
 const STORAGE_KEY = "beenthere_places_v3";
 const TOTAL_WORLD_COUNTRIES = 195;
@@ -2828,19 +2828,36 @@ async function forceOrbmarkUpdateIfNeeded(){
       headers:{"Cache-Control":"no-cache"}
     });
 
-    if(!response.ok) return;
+    if(!response.ok) return false;
 
     const remote=await response.json();
     const remoteVersion=String(remote.version || "").trim();
     const currentVersion=String(BUILD_VERSION).trim();
 
-    if(!remoteVersion || remoteVersion===currentVersion){
-      localStorage.setItem(BUILD_STORAGE_KEY,currentVersion);
-      return;
+    if(!remoteVersion){
+      return false;
     }
 
-    // Una nuova release è disponibile:
-    // puliamo cache e Service Worker prima di ricaricare.
+    // Se il bundle JS è già quello pubblicato, non fare assolutamente nulla.
+    if(remoteVersion===currentVersion){
+      localStorage.setItem(BUILD_STORAGE_KEY,currentVersion);
+      sessionStorage.removeItem("orbmark_update_attempt");
+      return false;
+    }
+
+    // Evita loop: per la stessa versione remota si forza il reload una sola volta
+    // durante la stessa sessione.
+    const attempted=sessionStorage.getItem("orbmark_update_attempt");
+    if(attempted===remoteVersion){
+      console.warn(
+        `Aggiornamento Orbmark ${remoteVersion} già tentato in questa sessione. ` +
+        `Blocco un nuovo reload automatico.`
+      );
+      return false;
+    }
+
+    sessionStorage.setItem("orbmark_update_attempt",remoteVersion);
+
     if("caches" in window){
       const keys=await caches.keys();
       await Promise.all(keys.map(key=>caches.delete(key)));
@@ -2851,20 +2868,22 @@ async function forceOrbmarkUpdateIfNeeded(){
       await Promise.all(regs.map(r=>r.unregister()));
     }
 
-    localStorage.setItem(BUILD_STORAGE_KEY,remoteVersion);
-
     const url=new URL(window.location.href);
     url.searchParams.set("v",remoteVersion);
     url.searchParams.set("_refresh",Date.now().toString());
 
     window.location.replace(url.toString());
+    return true;
   }catch(err){
     console.warn("Controllo aggiornamento Orbmark non riuscito:",err);
+    return false;
   }
 }
 
 (async()=>{
-  await forceOrbmarkUpdateIfNeeded();
+  const reloading=await forceOrbmarkUpdateIfNeeded();
+  if(reloading) return;
+
   initWorldMap();
   refreshUI();
   setTimeout(maybeShowWeeklyBackupReminder,700);

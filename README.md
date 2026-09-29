@@ -1,28 +1,22 @@
 # Orbmark
 
-**Lascia il tuo segno sul mondo 🌍**
-
 ## Versione
 
-**V1.3.10 – QA / Hardening**
+**V2.0.1 – Verifica AdSense**
 
-Controlli eseguiti:
-- sintassi JavaScript
-- ID HTML ↔ riferimenti JavaScript
-- ID duplicati
-- funzioni duplicate
-- listener duplicati
-- allineamento versione / auto-update
-- flusso Paese → Regione → sotto-zone
-- salvataggio province/zone
-- ricerca e blocco tastiera
+Questa build include nel `<head>` lo snippet AdSense per la verifica proprietà:
 
-Correzioni:
-- rimossi gli apici visibili attorno a “dettaglio aree disponibile”
-- un errore di rete ADM2 non viene più memorizzato come “nessuna sotto-zona”
-- su errore temporaneo compare “Riprova dettaglio”
-- “Segna tutta l'area” non salva più una regione incompleta se il download ADM2 fallisce
+`ca-pub-6070318357702960`
 
-## Copyright
+Gli annunci restano disattivati (`enabled: false`) finché non viene creato un
+`data-ad-slot` reale in AdSense.
 
-© 2026 Orbmark. Tutti i diritti riservati.
+### Passi
+
+1. Pubblica tutti i file su GitHub Pages.
+2. Attendi che la nuova versione sia raggiungibile online.
+3. In AdSense spunta **Ho inserito il codice**.
+4. Premi **Verifica**.
+5. Se la verifica riesce, richiedi la revisione del sito.
+
+© 2026 Orbmark.

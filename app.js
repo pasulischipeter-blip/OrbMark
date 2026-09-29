@@ -1,4 +1,4 @@
-const BUILD_VERSION = "1.3.9";
+const BUILD_VERSION = "2.0.1";
 const BUILD_STORAGE_KEY = "orbmark_build_version";
 const STORAGE_KEY = "beenthere_places_v3";
 const TOTAL_WORLD_COUNTRIES = 195;
@@ -1426,11 +1426,16 @@ async function ensureAdmin2ForRegion(region){
 }
 
 
+function isDefinitiveNoAdmin2Error(err){
+  const msg=String(err?.message || err || "");
+  return /Metadata ADM2: HTTP 404/i.test(msg);
+}
+
 async function getRegionDetailAvailability(region){
   const cacheKey=`${currentCountry?.iso3 || ""}|${region.id}`;
-  let availability=regionDetailCache.get(cacheKey);
+  const cached=regionDetailCache.get(cacheKey);
 
-  if(availability) return availability;
+  if(cached) return cached;
 
   try{
     const admin2=await ensureAdmin2ForRegion(region);
@@ -1438,22 +1443,37 @@ async function getRegionDetailAvailability(region){
       ? admin2.geojson.features
       : getAdmin2FeaturesForRegion(region,admin2);
 
-    availability={
+    const availability={
+      status:"ok",
       hasChildren:children.length>0,
       admin2,
       children
     };
+
+    regionDetailCache.set(cacheKey,availability);
+    return availability;
   }catch(err){
-    availability={
+    // A real 404 means the country has no ADM2 dataset.
+    // Network/CORS/temporary failures must NOT be remembered as "no sub-zones".
+    if(isDefinitiveNoAdmin2Error(err)){
+      const availability={
+        status:"ok",
+        hasChildren:false,
+        admin2:null,
+        children:[]
+      };
+      regionDetailCache.set(cacheKey,availability);
+      return availability;
+    }
+
+    return {
+      status:"error",
       hasChildren:false,
       admin2:null,
       children:[],
       error:err
     };
   }
-
-  regionDetailCache.set(cacheKey,availability);
-  return availability;
 }
 
 async function openRegionAction(region,options={}){
@@ -1494,6 +1514,21 @@ async function openRegionAction(region,options={}){
   const availability=await getRegionDetailAvailability(region);
 
   if(regionActionPending!==region || !dialog.open) return;
+
+  if(availability.status==="error"){
+    if(detailBtn){
+      detailBtn.hidden=false;
+      detailBtn.disabled=false;
+      detailBtn.textContent="Riprova dettaglio";
+    }
+    if(addPlaceBtn){
+      addPlaceBtn.hidden=true;
+    }
+    if(copy){
+      copy.textContent="Non riesco a verificare le sotto-zone in questo momento. Puoi riprovare senza perdere dati.";
+    }
+    return;
+  }
 
   if(availability.hasChildren){
     if(detailBtn){
@@ -1634,7 +1669,12 @@ async function markWholeRegionVisited(region){
   }catch(err){
     console.error("Errore selezione intera regione:",err);
 
-    // Se ADM2 non esiste davvero, la regione resta comunque selezionabile.
+    if(!isDefinitiveNoAdmin2Error(err)){
+      alert("Non riesco a caricare le sotto-zone in questo momento. Nessun dato è stato modificato: riprova più tardi.");
+      return;
+    }
+
+    // Nessun ADM2 disponibile realmente: salva la regione/stato direttamente.
     const exists=places.some(p =>
       p.countryIso3===currentCountry.iso3 &&
       p.adminLevel==="ADM1" &&
@@ -1679,6 +1719,12 @@ async function openRegion(region){
   selectedRegion=region;
 
   const availability=await getRegionDetailAvailability(region);
+
+  if(availability.status==="error"){
+    currentLevel="ADM1";
+    alert("Non riesco a caricare le sotto-zone in questo momento. Controlla la connessione e riprova.");
+    return;
+  }
 
   if(!availability.hasChildren){
     currentLevel="ADM1";
@@ -2013,7 +2059,7 @@ function renderWorldSearchSuggestions(query) {
     ? local.map(c=>`
       <button type="button" class="suggestion-btn" data-country-iso="${escapeHtml(c.iso3)}">
         <span class="search-result-main">${escapeHtml(c.name)}</span>
-        <small>Paese · "dettaglio aree disponibile"</small>
+        <small>Paese · dettaglio aree disponibile</small>
       </button>`).join("")
     : (query.trim().length<3
       ? '<div class="search-loading">Scrivi almeno 3 caratteri per cercare anche città e regioni.</div>'
@@ -2039,7 +2085,7 @@ function renderWorldSearchSuggestions(query) {
     const currentCountries=local.map(c=>`
       <button type="button" class="suggestion-btn" data-country-iso="${escapeHtml(c.iso3)}">
         <span class="search-result-main">${escapeHtml(c.name)}</span>
-        <small>Paese · "dettaglio aree disponibile"</small>
+        <small>Paese · dettaglio aree disponibile</small>
       </button>`).join("");
 
     const remoteHtml=remote.map((item,idx)=>{
@@ -2931,6 +2977,95 @@ document.addEventListener("touchend",e=>{
   lastNonMapTouchEnd=now;
 },{passive:false});
 
+
+let orbmarkAdScriptPromise=null;
+let orbmarkAdRendered=false;
+
+function getOrbmarkAdsConfig(){
+  const cfg=window.ORBMARK_ADS || {};
+  return {
+    enabled:cfg.enabled===true,
+    client:String(cfg.client || "").trim(),
+    slot:String(cfg.slot || "").trim()
+  };
+}
+
+function orbmarkAdsConfigured(){
+  const cfg=getOrbmarkAdsConfig();
+  return (
+    cfg.enabled &&
+    /^ca-pub-\d+$/.test(cfg.client) &&
+    /^\d+$/.test(cfg.slot)
+  );
+}
+
+function loadOrbmarkAdSense(){
+  if(!orbmarkAdsConfigured()) return Promise.resolve(false);
+  if(orbmarkAdScriptPromise) return orbmarkAdScriptPromise;
+
+  const cfg=getOrbmarkAdsConfig();
+
+  orbmarkAdScriptPromise=new Promise(resolve=>{
+    const existing=document.querySelector('script[data-orbmark-adsense="1"]');
+    if(existing){
+      if(window.adsbygoogle) resolve(true);
+      else existing.addEventListener("load",()=>resolve(true),{once:true});
+      return;
+    }
+
+    const s=document.createElement("script");
+    s.async=true;
+    s.crossOrigin="anonymous";
+    s.dataset.orbmarkAdsense="1";
+    s.src=`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(cfg.client)}`;
+    s.onload=()=>resolve(true);
+    s.onerror=()=>{
+      console.warn("Orbmark: caricamento AdSense non riuscito.");
+      resolve(false);
+    };
+    document.head.appendChild(s);
+  });
+
+  return orbmarkAdScriptPromise;
+}
+
+async function renderOrbmarkAd(){
+  const shell=document.getElementById("orbmarkAdShell");
+  const host=document.getElementById("orbmarkAdHost");
+  if(!shell || !host) return;
+
+  if(!orbmarkAdsConfigured()){
+    shell.hidden=true;
+    return;
+  }
+
+  shell.hidden=false;
+  if(orbmarkAdRendered) return;
+
+  const loaded=await loadOrbmarkAdSense();
+  if(!loaded) return;
+
+  const cfg=getOrbmarkAdsConfig();
+
+  const ins=document.createElement("ins");
+  ins.className="adsbygoogle";
+  ins.style.display="block";
+  ins.dataset.adClient=cfg.client;
+  ins.dataset.adSlot=cfg.slot;
+  ins.dataset.adFormat="auto";
+  ins.dataset.fullWidthResponsive="true";
+
+  host.replaceChildren(ins);
+
+  try{
+    (window.adsbygoogle=window.adsbygoogle || []).push({});
+    orbmarkAdRendered=true;
+  }catch(err){
+    console.warn("Orbmark: inizializzazione annuncio non riuscita.",err);
+  }
+}
+
+
 async function forceOrbmarkUpdateIfNeeded(){
   try{
     const response=await fetch(`version.json?t=${Date.now()}`,{
@@ -2997,6 +3132,7 @@ async function forceOrbmarkUpdateIfNeeded(){
   initWorldMap();
   refreshUI();
   setTimeout(maybeShowWeeklyBackupReminder,700);
+  setTimeout(renderOrbmarkAd,1000);
 })();
 
 

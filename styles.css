@@ -1746,3 +1746,41 @@ body.search-keyboard-lock{
 #countrySearchInput{
   font-size:16px !important;
 }
+
+
+/* V2.0.0 — advertising-ready, non-invasive placement */
+.orbmark-ad-shell{
+  width:min(100% - 24px,760px);
+  margin:18px auto 88px;
+  padding:10px;
+  border-radius:18px;
+  background:rgba(255,255,255,.72);
+  border:1px solid rgba(22,50,79,.08);
+  overflow:hidden;
+}
+
+.orbmark-ad-shell[hidden]{
+  display:none !important;
+}
+
+.orbmark-ad-label{
+  margin:0 0 6px;
+  text-align:center;
+  font-size:10px;
+  line-height:1;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+
+.orbmark-ad-host{
+  width:100%;
+  min-height:0;
+  overflow:hidden;
+}
+
+.orbmark-ad-shell,
+.orbmark-ad-host,
+.adsbygoogle{
+  touch-action:manipulation;
+}
